@@ -82,6 +82,7 @@ python main.py
 ```
 
 This will:
+
 - Load and clean data from both CSV files
 - Compute day-over-day changes for all features
 - Split data (80% training, 20% testing) while preserving temporal order
@@ -103,11 +104,13 @@ The entire process takes about 20-30 seconds.
 **Why it matters:** The market data and stock prices came from different sources. They had different numbers of rows because trading didn't happen on every date.
 
 **Key decisions:**
+
 - **Inner join on dates:** Only use dates present in BOTH files. Better to have less data that's complete than partial data.
 - **Forward-fill missing values:** If a value is missing, assume it stays the same until the next known value. This preserves time-series patterns better than mean imputation.
 - **Sort chronologically:** CRITICAL for time-series. Never shuffle the data.
 
 **Code example:**
+
 ```python
 # Align datasets on Date column (inner join = only keep matching dates)
 merged_df = pd.merge(data_df, stock_price_df, on='Date', how='inner')
@@ -120,16 +123,19 @@ merged_df = pd.merge(data_df, stock_price_df, on='Date', how='inner')
 **The insight:** Stock prices react to CHANGES, not absolute values. If volume suddenly spikes, prices often move.
 
 **Mathematical formula:**
+
 ```
 ΔX(t) = X(t) - X(t-1)
 ```
 
 For example, if volume on Monday = 1,000 and Tuesday = 1,200:
+
 - Tuesday's feature = 1,200 - 1,000 = +200 (volume increased)
 
 **Temporal alignment (crucial):**
+
 ```
-Features at time t (changes from yesterday to today) 
+Features at time t (changes from yesterday to today)
     ↓
 Predict target at time t+1 (tomorrow's price)
 ```
@@ -141,12 +147,14 @@ This ensures we only use past information to predict the future—no "cheating" 
 I trained two models to compare approaches:
 
 **Linear Regression:**
+
 - Formula: `Price = β₀ + β₁×change₁ + β₂×change₂ + ...`
 - Pros: Simple, fast, coefficients are interpretable
 - Cons: Assumes linear relationships (real markets are more complex)
 - My takeaway: Good for a baseline
 
 **Random Forest:**
+
 - Builds many decision trees, averages their predictions
 - Pros: Captures non-linear patterns (e.g., "high volume AND negative sentiment")
 - Cons: Slower, harder to explain why it makes predictions
@@ -157,6 +165,7 @@ If a complex model doesn't beat a simple one, something's probably wrong with my
 
 **Key best practice: No shuffling**
 Time-series data MUST maintain temporal order during train-test split.
+
 - Training set: First 80% of dates (old data)
 - Test set: Last 20% of dates (recent data)
 - This mimics real-world scenario: Learn from history, predict the future
@@ -166,10 +175,12 @@ Time-series data MUST maintain temporal order during train-test split.
 **Metrics I track:**
 
 1. **MAE (Mean Absolute Error)** - Average prediction error in dollars
+
    - Easy to interpret: "On average, my predictions are off by $X"
    - Lower is better
 
 2. **RMSE (Root Mean Squared Error)** - Like MAE but penalizes large errors more
+
    - If RMSE >> MAE, I have some really bad predictions
    - Lower is better
 
@@ -179,6 +190,7 @@ Time-series data MUST maintain temporal order during train-test split.
    - **Critical insight:** Negative R² is a RED FLAG that something's very wrong
 
 **What I learned from my results:**
+
 - Both models got negative R² scores (-15)
 - This means they're WORSE than just predicting the average price
 - Why? Single-feature prediction is incredibly hard. Stock markets are complex.
@@ -191,23 +203,26 @@ Time-series data MUST maintain temporal order during train-test split.
 After running with real market data (3,800 samples, 15 years):
 
 | Metric | Linear Regression | Random Forest |
-|--------|-------------------|---------------|
-| MAE | $2,391 | $2,421 |
-| RMSE | $2,477 | $2,540 |
-| R² | -14.96 | -15.79 |
+| ------ | ----------------- | ------------- |
+| MAE    | $2,391            | $2,421        |
+| RMSE   | $2,477            | $2,540        |
+| R²     | -14.96            | -15.79        |
 
 **What this means:**
+
 - Linear Regression slightly outperforms Random Forest (1.3% better MAE)
 - But BOTH models fail badly (negative R² means worse than average)
 - The error ($2,400) is ~48% of the average stock price—really poor
 - With only ONE feature (daily changes), we can't capture market dynamics well enough
 
 **Why did the model struggle?**
+
 1. **Single feature is insufficient** - Real markets depend on many factors (interest rates, news, sentiment, technical patterns)
 2. **Limited historical data** - 3,800 samples over 15 years sounds like a lot but markets change
 3. **Structural complexity** - Stock prices follow non-stationary patterns that are hard to predict
 
 **What I would do next:**
+
 - Add more features (moving averages, volatility, technical indicators)
 - Try time-series models (ARIMA, LSTM) designed specifically for temporal data
 - Incorporate external data (sentiment, economic indicators)
@@ -249,7 +264,9 @@ print(f"Predicted tomorrow's price: ${prediction[0]:.2f}")
 ## File-by-File Explanation
 
 ### `src/preprocess.py`
+
 Handles the "garbage in, garbage out" problem. Real data is messy. This module:
+
 - Loads CSVs and validates they have required columns
 - Checks for and handles missing values
 - Removes duplicate dates
@@ -258,7 +275,9 @@ Handles the "garbage in, garbage out" problem. Real data is messy. This module:
 **Key function:** `preprocess_pipeline()` - orchestrates all steps
 
 ### `src/feature_engineering.py`
+
 Transforms raw values into features models can learn from.
+
 - Computes daily changes using pandas `.diff()`
 - Creates target variable (next day's price) using `.shift(-1)`
 - Validates that changes are reasonable (sanity checks)
@@ -266,7 +285,9 @@ Transforms raw values into features models can learn from.
 **Key insight:** This is where I explicitly implement the mathematical formula for changes.
 
 ### `src/train.py`
+
 Trains two different models and extracts insights:
+
 - **Linear Regression:** Fits a line through the data, provides interpretable coefficients
 - **Random Forest:** Builds ensemble of decision trees, provides feature importances
 - **Key principle:** Feature scaling (StandardScaler) ensures all features are comparable
@@ -274,7 +295,9 @@ Trains two different models and extracts insights:
 **Important practice:** Uses `random_state=42` for reproducibility. Same seed = same results every time.
 
 ### `src/evaluate.py`
+
 Grades the models honestly:
+
 - Calculates MAE, RMSE, R²
 - **Sanity checks:** Are predictions negative? Are they in a reasonable range? Do they vary?
 - Generates 6 plots showing predictions and errors
@@ -283,7 +306,9 @@ Grades the models honestly:
 **Philosophy:** Metrics without interpretation are meaningless. I want to explain what the numbers mean.
 
 ### `main.py`
+
 Orchestrates everything in the right order:
+
 1. Preprocess data
 2. Engineer features
 3. Train models
@@ -305,6 +330,7 @@ The pipeline creates 6 PNG plots in `outputs/`:
 6. **Coefficients:** Bar chart showing relationship strength (Linear Regression)
 
 **How to use visualizations:**
+
 - **Predictions plot:** Do predictions follow actual prices? (Should mostly match if model works)
 - **Residuals plot:** Are errors randomly scattered or do they show patterns? (Random is good, patterns suggest systematic errors)
 - **Feature importance:** Which features drive predictions? (Helps understand what the model learned)
@@ -327,19 +353,23 @@ See `requirements.txt` for exact versions.
 ## What I Learned Building This
 
 1. **Data preparation matters more than model choice**
+
    - I spent more time cleaning data and engineering features than training models
    - A simple model with good features beats a complex model with bad features
 
 2. **Temporal order is sacred in time-series**
+
    - One mistake: shuffling time-series data = misleadingly good results
    - Right way: train on history, test on future (respects temporal order)
 
 3. **Negative results are data too**
+
    - Getting R² = -15 is bad, but honestly reporting it matters
    - If a model fails, it tells you something about the problem
    - Single feature can't predict complex markets (important finding!)
 
 4. **Interpretation > accuracy**
+
    - Numbers without context are useless
    - I included sanity checks, error analysis, and plain-English explanations
    - A model I understand (Linear Regression) is more useful than a black box
@@ -352,120 +382,39 @@ See `requirements.txt` for exact versions.
 
 ---
 
-## Possible Improvements
-
-If I were to extend this project:
-
-**Better features:**
-```python
-# Add technical indicators
-df['moving_avg_5'] = df['volume'].rolling(5).mean()
-df['volatility'] = df['price'].rolling(10).std()
-df['momentum'] = df['price'].diff(10)
-```
-
-**Different model architectures:**
-```python
-# Time-series model (ARIMA)
-from statsmodels.tsa.arima.model import ARIMA
-model = ARIMA(df['price'], order=(5,1,2))
-
-# Deep learning (LSTM)
-from tensorflow.keras.models import Sequential
-model = Sequential([...])  # RNN designed for sequences
-```
-
-**Cross-validation:**
-```python
-# Time-series cross-validation (not random)
-from sklearn.model_selection import TimeSeriesSplit
-cv = TimeSeriesSplit(n_splits=5)
-```
-
-**Hyperparameter tuning:**
-```python
-# Grid search for best Random Forest settings
-from sklearn.model_selection import GridSearchCV
-params = {'n_estimators': [50,100,200], 'max_depth': [5,10,15]}
-grid = GridSearchCV(RandomForestRegressor(), params, cv=5)
-```
-
----
-
-## How to Use This for Learning
-
-This project demonstrates:
-- End-to-end ML pipeline (preprocess → feature → train → evaluate)
-- Difference between simple (Linear Regression) and complex (Random Forest) models
-- Proper time-series handling (no shuffling, temporal train-test split)
-- Honest evaluation (including negative results)
-- Code organization (modules with clear responsibilities)
-
-**Best way to learn:**
-1. Run `python main.py` to see it working
-2. Look at generated plots to understand results
-3. Read through `src/` files to understand decisions
-4. Modify features and re-run to see how results change
-5. Try adding new models or features and observe impact
-
----
-
 ## Challenges & How I Overcame Them
 
 **Challenge 1: Column name mismatches**
+
 - Datasets had different column names (one had 'Price', other 'Stock_Price')
 - Solution: Dynamic column detection (find non-Date column and standardize names)
 - Lesson: Make code flexible enough to handle real-world messiness
 
 **Challenge 2: Data loss from merging**
+
 - Inner join removed dates that didn't exist in both datasets
 - Alternative was outer join but more missing values
 - Solution: Made this transparent in logs so you know exactly how much data was lost
 
 **Challenge 3: Negative R² results**
+
 - Initial reaction: "Something's broken"
 - Better understanding: "Model truly can't do this task well with current features"
 - Lesson: Negative results are informative—don't just ignore them
 
 **Challenge 4: Producing readable code**
+
 - First version: Minimal comments, unclear variable names
 - Better version: Detailed docstrings, math formulas in comments, clear logic flow
 - Lesson: Code for humans first, computers second
 
 ---
 
-## Limitations & Honest Assessment
-
-This project has real limitations:
-
-1. **Limited features (1 feature)** - Real markets depend on many factors. With only daily changes in one indicator, predictions are fundamentally limited.
-
-2. **Temporal mismatch** - I'm predicting next-day price with same-day changes. In reality, that change might be partly a reaction to the price change itself (causality questions).
-
-3. **Fixed time split** - Training on 2010-2024, testing on 2025. Real deployment would need continuous retraining as new data arrives.
-
-4. **No external validation** - Didn't validate against other approaches or benchmarks (e.g., "better than ARIMA?").
-
-5. **Market changes** - Market structure, volatility, and correlations change over time. A model trained on 2010-2020 might not work for 2023-2025.
-
-**What I'm not claiming:**
-- This model is ready for trading (it's not!)
-- These results are surprising (they're not)
-- Stock prediction is easy (it's not!)
-
-**What I did demonstrate:**
-- Proper ML engineering practices
-- How to think about time-series problems
-- The importance of honest evaluation
-- How to learn from failed models
-
----
-
 ## Contact & Questions
 
-Built by: [Your Name/Student]  
-Date: January 2025  
-Purpose: Machine Learning course/assignment  
+Built by: Nancy  
+Date: January 2026  
+Purpose: Machine Learning course/assignment
 
 For questions about the code or approach, see the detailed comments throughout `src/` files.
 
